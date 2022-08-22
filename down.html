@@ -65,22 +65,7 @@ button{padding:0px;}
 </head>
 <body>
 
-<div class="bg-box">
-	<div class="bg-img" style="background-image:url(img/1.gif)"></div>
-	<div class="bg-img" style="background-image:url(img/4.jpg)"></div>
-	<div class="bg-img" style="background-image:url(img/2.gif)"></div>
-	<div class="bg-img" style="background-image:url(img/7.jpg)"></div>
-	<div class="bg-img" style="background-image:url(img/7.gif)"></div>
-	<div class="bg-img" style="background-image:url(img/5.jpg)"></div>
-	<div class="bg-img" style="background-image:url(img/8.gif)"></div>
-	<div class="bg-img" style="background-image:url(img/3.jpg)"></div>
-	<div class="bg-img" style="background-image:url(img/5.gif)"></div>
-	<div class="bg-img" style="background-image:url(img/6.gif)"></div>
-	<div class="bg-img" style="background-image:url(img/6.jpg)"></div>
-	<div class="bg-img" style="background-image:url(img/2.jpg)"></div>
-	<div class="bg-img" style="background-image:url(img/9.gif)"></div>
-	<div class="bg-img" style="background-image:url(img/1.jpg)"></div>
-	<div class="bg-img" style="background-image:url(img/4.gif)"></div>
+<div class="bg-box" id="bgBox1">
 </div>
 
 <div class="main-box">
@@ -159,6 +144,23 @@ button{padding:0px;}
 	$(".model-close-icon").on('click',function(){
 		$('#ios-model').addClass('hidden')
 	});
+	var data="";
+	data+='<div class="bg-img" style="background-image:url(img/1.gif)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/4.jpg)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/2.gif)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/7.jpg)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/7.gif)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/5.jpg)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/8.gif)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/3.jpg)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/5.gif)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/6.gif)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/6.jpg)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/2.jpg)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/9.gif)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/1.jpg)"></div>';
+	data+='<div class="bg-img" style="background-image:url(img/4.gif)"></div>';
+	document.getElementById('bgBox1').innerHTML = data;
 </script>
 </body>
 </html>
