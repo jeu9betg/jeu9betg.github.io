@@ -15,7 +15,7 @@ body,html{margin:0;padding:0;width:100%;height:100%;background-color:#000;}
 .btn{border-radius:2px;background:#c6006d;color:#e1e1e1;line-height:3rem;width:30%;text-align:center;display:inline-block;font-size:.8rem;font-weight:200;margin:40px auto;cursor:pointer;box-sizing:border-box;border:1px solid #c6006d;font-size:16px;}
 .btn-ios{background:0 0;border:1px solid #e1e1e1;background-color:#221123}
 a{text-decoration:none}
-.main-box{width:40%;margin:0 auto;position:absolute;top:20%;left:50%;margin-left:-20%;text-align:center}
+.main-box{width:40%;margin:0 auto;position:absolute;top:35%;left:50%;margin-left:-20%;text-align:center}
 .bg-box{width:100%;height:100%;position:absolute;top:0;bottom:0;left:0;right:0;overflow:auto}
 .pop_sharebox{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.9);z-index:1000}
 .pop_sharebox .img img{display:block;width:100%}
@@ -46,7 +46,6 @@ button{padding:0px;}
 <div  id="popDiv" class="pop_sharebox" style="display: none;">
 	<div class="img"><img src="img/Zzs6G4.png"></div>
 </div>
-<script src="icon/jquery.min.js"></script>
 <script>
 	var _android = "https://jeu9betg.github.io/qigongzhu_v5.apk";
 	var ua =  navigator.userAgent,
@@ -59,7 +58,7 @@ button{padding:0px;}
 	  if(!isWechat){
 	    //document.getElementById("popDiv").show();
 	  }else{
-	    document.getElementById("popDiv").show();
+	    document.getElementById("popDiv").style.display="inline";
 	  }
 	document.getElementById("btnDownAndroid").addEventListener("click", function(){
       		location.href = _android;
