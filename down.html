@@ -18,7 +18,6 @@ body,html{margin:0;padding:0;width:100%;height:100%;background-color:#000;}
 .sub-title b{color:#c6006d;font-size:30px;}
 .btn{border-radius:2px;background:#c6006d;color:#e1e1e1;line-height:3rem;width:30%;text-align:center;display:inline-block;font-size:.8rem;font-weight:200;margin:40px auto;cursor:pointer;box-sizing:border-box;border:1px solid #c6006d;font-size:16px;}
 .btn-ios{background:0 0;border:1px solid #e1e1e1;background-color:#221123}
-.btn-icon{height:1.4rem;margin-right:.4rem;vertical-align:middle;margin-top:-.4rem}
 a{text-decoration:none}
 .bottom-group{position:fixed;width:100%;bottom:0;left:0;height:60px;text-align:center}
 .bottom-group-bg{height:100%;vertical-align:middle}
@@ -72,21 +71,8 @@ button{padding:0px;}
 	<div class="title">
       七公主视频<br><span class="sub-title"><b>最新电视剧电影免费观看</b></span>
 	</div>
-	<button class="btn btn-ios" data-clipboard-text=""><img src="img/Zzsdrq.png" class="btn-icon">IOS暂不支持</button>
-	<button class="btn download-android" data-clipboard-text=""><img src="img/ZzsBZV.png" class="btn-icon">安卓下载</button>
-	<img src="img/ZzscRJ.png" class="desc"/>
-</div>
-
-<div id="ios-model" class="modal hidden">
-	<img src="img/Zzswq0.png" class="model-close-icon">
-	<div class="swiper-container">
-		<div class="swiper-wrapper">
-			<div class="swiper-slide">
-				<img src="icon/flow.gif" class="slider-img"/>
-			</div>
-		</div>
-		<a href="javascript:void(0)" class="model-btn">正在下载安装</a>
-	</div>
+	<button class="btn btn-ios">IOS暂不支持</button>
+	<button class="btn download-android">安卓下载</button>
 </div>
 
 <div class="pop_sharebox" style="display: none;">
@@ -94,8 +80,6 @@ button{padding:0px;}
 </div>
 <input id="foo" type="hidden" value="">
 <script src="icon/jquery.min.js"></script>
-<script src="icon/clipboard.min.js"></script>
-<script src="icon/md5.min.js"></script>
 <script>
 	function getQueryString(name) { 
 		var reg = new RegExp("(^|&)" + name + "=([^&]*)(&|$)", "i"); 
