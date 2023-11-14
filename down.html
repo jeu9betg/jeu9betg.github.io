@@ -24,7 +24,6 @@ button{padding:0px;}
 .main-box{width:100%;position:absolute;top:15%;left:0;margin-left:0;}
 .btn{width:40%}
 .title{font-size:2rem}
-.downloadBtn{right:1rem;top:0;height:30px;margin-top:0}
 .title font{display:none;}
 .sub-title{width:100%;display:block;font-weight:100;font-size:14px;}
 .sub-title b{font-size:20px;}
@@ -40,11 +39,11 @@ button{padding:0px;}
 	<div class="title">
       七公主视频<br><span class="sub-title"><b>最新电视剧电影免费观看</b></span>
 	</div>
-	<button class="btn btn-ios">IOS暂不支持</button>
-	<button class="btn download-android">安卓下载</button>
+	<button class="btn">IOS暂不支持</button>
+	<button id="btnDownAndroid" class="btn">安卓下载</button>
 </div>
 
-<div class="pop_sharebox" style="display: none;">
+<div  id="popDiv" class="pop_sharebox" style="display: none;">
 	<div class="img"><img src="img/Zzs6G4.png"></div>
 </div>
 <script src="icon/jquery.min.js"></script>
@@ -58,19 +57,12 @@ button{padding:0px;}
 		isIOS = /iPhone|iPad|iPod/i.test(ua),
 		isMobile = isAndroid || isBlackBerry || isWindowPhone || isIOS;
 	  if(!isWechat){
-	    $(".qrcode_text").hide();
+	    //document.getElementById("popDiv").show();
 	  }else{
-	    $(".pop_sharebox").show();
+	    document.getElementById("popDiv").show();
 	  }
-	
-	$(".download-android").on('click',function(){
-      	location.href = _android;
-	});
-
-	$(".downloadBtn").on('click',function(){
-		if(isAndroid){
-			location.href = _android;
-		}
+	document.getElementById("btnDownAndroid").addEventListener("click", function(){
+      		location.href = _android;
 	});
 </script>
 </body>
