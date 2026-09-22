@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>加密媒体库 - 公钥解密预览</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: #16181d; color: #dde3ec; }
+  header { padding: 14px 20px; border-bottom: 1px solid #2a2f38; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header small { color: #7d8796; }
+  #engine { font-size: 12px; color: #6fd08c; }
+  #status { padding: 8px 20px; font-size: 13px; color: #9fb3d1; min-height: 32px; }
+  #status.error { color: #ff7b7b; }
+  #layout { display: flex; gap: 16px; padding: 0 20px 20px; height: calc(100vh - 96px); }
+  #listcol { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+  #apirow { display: flex; gap: 6px; }
+  #apirow input { flex: 1; min-width: 0; background: #1b1e24; color: #dde3ec; border: 1px solid #2a2f38;
+                  border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  #apirow button { background: #2b3a55; color: #dde3ec; border: 1px solid #3a4a6b; border-radius: 6px;
+                   padding: 6px 10px; font-size: 12px; cursor: pointer; }
+  #apirow button:hover { background: #38507e; }
+  #filelist { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto;
+              border: 1px solid #2a2f38; border-radius: 8px; background: #1b1e24; }
+  #filelist li.group { cursor: default; background: #14161b; color: #6f7a8a; font-size: 12px;
+                       padding: 6px 14px; border-bottom: 1px solid #23272f; }
+  #filelist li.group:hover { background: #14161b; }
+  #filelist li { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #23272f; font-size: 14px;
+                 display: flex; justify-content: space-between; gap: 8px; }
+  #filelist li:hover { background: #23272f; }
+  #filelist li.active { background: #2b3a55; color: #fff; }
+  #filelist li .tag { color: #6f7a8a; font-size: 12px; }
+  #viewer { flex: 1; display: flex; align-items: center; justify-content: center;
+            border: 1px solid #2a2f38; border-radius: 8px; background: #000; overflow: hidden; position: relative; }
+  #viewer img, #viewer video { max-width: 100%; max-height: 100%; display: block; }
+  #viewer img[hidden], #viewer video[hidden] { display: none; }
+  #hint { position: absolute; color: #5c6675; font-size: 14px; }
+  .spinner { display: none; position: absolute; inset: 0; align-items: center; justify-content: center;
+             background: rgba(0,0,0,.55); font-size: 14px; color: #cfe1ff; }
+  .spinner.on { display: flex; }
+</style>
+</head>
+<body>
+<header>
+  <h1>加密媒体库</h1>
+  <small>文件以私钥加密（AES-256-GCM + RSA 包装会话密钥），本页使用公钥在浏览器内解密预览</small>
+  <span id="engine"></span>
+</header>
+<div id="status"></div>
+<div id="layout">
+  <div id="listcol">
+    <div id="apirow">
+      <input id="apiurl" type="text" placeholder="文件列表接口 URL，如 http://服务器/api/list">
+      <button id="btnload">加载列表</button>
+      <button id="btnclear" title="清空服务器列表">清空</button>
+    </div>
+    <ul id="filelist"></ul>
+  </div>
+  <div id="viewer">
+    <div id="hint">点击左侧文件，自动解密并预览</div>
+    <img id="img" hidden alt="预览图片">
+    <video id="video" controls hidden></video>
+    <div id="spinner" class="spinner">解密中…</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ======== 由 QEncryptor“写入HTML”功能注入的占位符 ======== */
+const MODULUS_HEX  = "99c504faa087a2790c3a86c966b5592afc6bd78b80e0c921f5f060812b8a6dedd4230e225abbe15778658367939e440800e63a0a399fdc998f7fa3e97f91235f7ec68a7d5a3f1c41095f88d69d908fd4e843f9c750cb73a80cea90ab1215275e52b291f6ed98d82e96f0a86b7bf03a5c3f5df44ec32412cadd9cc183ee38982e2dcb904fd5db0d06f07cf2260ff992c08130a8b7e8c0600d8d4a02c4db3f786fdb93b24dd7f97a389a3b65dd5cf2133913554aa50c972993a3d780b035b27969abfb8af33ee429c27984f8d2d51ad5c3c346f9f8709e60146c7899ef516e9fee6ef3994ea65d516fd9da5ff68a387c7a610b138eea7c8c317e20abb738074985";   // RSA 公钥模数 n（十六进制）
+const EXPONENT_HEX = "10001";  // RSA 公钥指数 e（十六进制）
+const SUFFIX       = ".enc";        // 加密文件后缀，如 .enc
+const IMAGE_EXTS   = [".jpg",".jpeg",".png",".gif",".bmp",".webp",".tif",".tiff",".ico",".heic"]; // 图片扩展名集合
+const VIDEO_EXTS   = [".mp4",".avi",".mkv",".mov",".wmv",".flv",".webm",".mpg",".mpeg",".m4v",".3gp",".ts"]; // 视频扩展名集合
+const FILES        = [{"url":"2013050521400620.jpg.enc","name":"2013050521400620.jpg.enc","ext":".jpg"},{"url":"20180102171447_84049.jpg.enc","name":"20180102171447_84049.jpg.enc","ext":".jpg"},{"url":"v2-0612dbc5cde079b6779d4e8f7ec03a6e_1440w.webp.enc","name":"v2-0612dbc5cde079b6779d4e8f7ec03a6e_1440w.webp.enc","ext":".webp"},{"url":"v2-8eb1656adb80988585f694c3c37c0a51_r.jpg.enc","name":"v2-8eb1656adb80988585f694c3c37c0a51_r.jpg.enc","ext":".jpg"},{"url":"v2-922df6fb0d1af98ea7fddbc5375de2c1_r.jpg.enc","name":"v2-922df6fb0d1af98ea7fddbc5375de2c1_r.jpg.enc","ext":".jpg"},{"url":"v2-969eb56ca1203d812be339fa99058e2e_r.jpg.enc","name":"v2-969eb56ca1203d812be339fa99058e2e_r.jpg.enc","ext":".jpg"},{"url":"v2-9acdfb53c45c57c262647030134aefc9_r.jpg.enc","name":"v2-9acdfb53c45c57c262647030134aefc9_r.jpg.enc","ext":".jpg"},{"url":"v2-9be57f743d59db7eca7c48105bb7a74c_r.png.enc","name":"v2-9be57f743d59db7eca7c48105bb7a74c_r.png.enc","ext":".png"}];      // 内置清单 [{url, name, ext}]
+
+/*__QENC_CORE_BEGIN__*/
+/* 纯逻辑核心：容器解析 + 公钥 RSA + AES-256-GCM（WebCrypto，纯 JS 后备） */
+var QENC = (function () {
+  var MASK = (1n << 128n) - 1n;
+  var R128 = BigInt("0xe1" + "0".repeat(30)); // GHASH 约化常数 0xE1<<120
+
+  function bytesToBigInt(bytes) {
+    var x = 0n;
+    for (var i = 0; i < bytes.length; i++) x = (x << 8n) | BigInt(bytes[i]);
+    return x;
+  }
+
+  function bigIntToBytes(x, length) {
+    var out = new Uint8Array(length);
+    for (var i = length - 1; i >= 0; i--) { out[i] = Number(x & 0xffn); x >>= 8n; }
+    if (x !== 0n) throw new Error("解密结果超出预期长度（密钥不匹配）");
+    return out;
+  }
+
+  function modPow(base, exp, mod) {
+    var result = 1n;
+    base %= mod;
+    while (exp > 0n) {
+      if (exp & 1n) result = result * base % mod;
+      exp >>= 1n;
+      base = base * base % mod;
+    }
+    return result;
+  }
+
+  function rsaUnwrapSessionKey(wrappedKey, keyLength) {
+    var n = BigInt("0x" + MODULUS_HEX);
+    var e = BigInt("0x" + EXPONENT_HEX);
+    var c = bytesToBigInt(wrappedKey);
+    if (c >= n) throw new Error("密文块不小于模数，密钥位数不匹配");
+    return bigIntToBytes(modPow(c, e, n), keyLength);
+  }
+
+  function parseContainer(buf) {
+    var bytes = new Uint8Array(buf);
+    var view = new DataView(buf);
+    var ascii = function (o, l) {
+      var s = "";
+      for (var i = 0; i < l; i++) s += String.fromCharCode(bytes[o + i]);
+      return s;
+    };
+    if (bytes.length < 7 || ascii(0, 4) !== "QENC") throw new Error("不是本工具生成的加密文件（缺少 QENC 头）");
+    if (view.getUint8(4) !== 1) throw new Error("不支持的容器版本");
+
+    var off = 5;
+    var wrappedLen = view.getUint16(off, true); off += 2;
+    var wrappedKey = bytes.subarray(off, off + wrappedLen); off += wrappedLen;
+    var iv = bytes.slice(off, off + 12); off += 12;
+    var cipherLen = Number(view.getBigUint64(off, true)); off += 8;
+    if (off + cipherLen + 16 > bytes.length) throw new Error("文件不完整或已损坏");
+    var cipher = bytes.slice(off, off + cipherLen);
+    var tag = bytes.subarray(off + cipherLen, off + cipherLen + 16);
+    return { wrappedKey: wrappedKey, iv: iv, cipher: cipher, tag: tag };
+  }
+
+  /* ---------- 纯 JS AES-256-GCM（无 WebCrypto 时的后备，如 http://局域网IP） ---------- */
+  var SB, TE0, TE1, TE2, TE3;
+  (function initAesTables() {
+    function mul2(a) { return ((a << 1) ^ ((a >> 7) * 0x11b)) & 0xff; }
+    function rotl8(b) { return ((b << 1) | (b >> 7)) & 0xff; }
+
+    var EXP = new Uint8Array(256), LOG = new Uint8Array(256);
+    var x = 1;
+    for (var i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x = mul2(x) ^ x; } // x = 3^i? 需保证生成元：改用 exp[i]=x; x*=3
+    // 上面的递推 x = mul2(x)^x 即 x = 3*x，3 是 GF(2^8) 生成元
+    SB = new Uint8Array(256);
+    SB[0] = 0x63;
+    for (var b = 1; b < 256; b++) {
+      var inv = EXP[(255 - LOG[b]) % 255];
+      var s = inv, c = inv;
+      for (var j = 0; j < 4; j++) { c = rotl8(c); s ^= c; }
+      SB[b] = (s ^ 0x63) & 0xff;
+    }
+    TE0 = new Uint32Array(256); TE1 = new Uint32Array(256); TE2 = new Uint32Array(256); TE3 = new Uint32Array(256);
+    for (var t = 0; t < 256; t++) {
+      var s0 = SB[t], s2 = mul2(s0), s3 = s2 ^ s0;
+      TE0[t] = ((s2 << 24) | (s0 << 16) | (s0 << 8) | s3) >>> 0;
+      TE1[t] = ((TE0[t] >>> 8) | (TE0[t] << 24)) >>> 0;
+      TE2[t] = ((TE0[t] >>> 16) | (TE0[t] << 16)) >>> 0;
+      TE3[t] = ((TE0[t] >>> 24) | (TE0[t] << 8)) >>> 0;
+    }
+  })();
+
+  function subWord(w) {
+    return ((SB[w >>> 24] << 24) | (SB[(w >>> 16) & 255] << 16) | (SB[(w >>> 8) & 255] << 8) | SB[w & 255]) >>> 0;
+  }
+
+  function expandKey256(key) {
+    var w = new Uint32Array(60);
+    for (var i = 0; i < 8; i++) {
+      w[i] = ((key[i * 4] << 24) | (key[i * 4 + 1] << 16) | (key[i * 4 + 2] << 8) | key[i * 4 + 3]) >>> 0;
+    }
+    var rcon = 1;
+    for (i = 8; i < 60; i++) {
+      var t = w[i - 1];
+      if (i % 8 === 0) {
+        t = subWord(((t << 8) | (t >>> 24)) >>> 0) ^ ((rcon << 24) >>> 0);
+        rcon = ((rcon << 1) ^ ((rcon >> 7) * 0x11b)) & 0xff;
+      } else if (i % 8 === 4) {
+        t = subWord(t);
+      }
+      w[i] = (w[i - 8] ^ t) >>> 0;
+    }
+    return w;
+  }
+
+  function encBlock(w, s) { // s: Uint32Array(4)，原地加密一个分组
+    var t0 = (s[0] ^ w[0]) >>> 0, t1 = (s[1] ^ w[1]) >>> 0, t2 = (s[2] ^ w[2]) >>> 0, t3 = (s[3] ^ w[3]) >>> 0;
+    for (var r = 1, o = 4; r < 14; r++, o += 4) {
+      var a = (TE0[t0 >>> 24] ^ TE1[(t1 >>> 16) & 255] ^ TE2[(t2 >>> 8) & 255] ^ TE3[t3 & 255] ^ w[o]) >>> 0;
+      var bb = (TE0[t1 >>> 24] ^ TE1[(t2 >>> 16) & 255] ^ TE2[(t3 >>> 8) & 255] ^ TE3[t0 & 255] ^ w[o + 1]) >>> 0;
+      var c = (TE0[t2 >>> 24] ^ TE1[(t3 >>> 16) & 255] ^ TE2[(t0 >>> 8) & 255] ^ TE3[t1 & 255] ^ w[o + 2]) >>> 0;
+      var d = (TE0[t3 >>> 24] ^ TE1[(t0 >>> 16) & 255] ^ TE2[(t1 >>> 8) & 255] ^ TE3[t2 & 255] ^ w[o + 3]) >>> 0;
+      t0 = a; t1 = bb; t2 = c; t3 = d;
+    }
+    s[0] = ((SB[t0 >>> 24] << 24) ^ (SB[(t1 >>> 16) & 255] << 16) ^ (SB[(t2 >>> 8) & 255] << 8) ^ SB[t3 & 255] ^ w[56]) >>> 0;
+    s[1] = ((SB[t1 >>> 24] << 24) ^ (SB[(t2 >>> 16) & 255] << 16) ^ (SB[(t3 >>> 8) & 255] << 8) ^ SB[t0 & 255] ^ w[57]) >>> 0;
+    s[2] = ((SB[t2 >>> 24] << 24) ^ (SB[(t3 >>> 16) & 255] << 16) ^ (SB[(t0 >>> 8) & 255] << 8) ^ SB[t1 & 255] ^ w[58]) >>> 0;
+    s[3] = ((SB[t3 >>> 24] << 24) ^ (SB[(t0 >>> 16) & 255] << 16) ^ (SB[(t1 >>> 8) & 255] << 8) ^ SB[t2 & 255] ^ w[59]) >>> 0;
+  }
+
+  function ivWords(iv) {
+    return [
+      ((iv[0] << 24) | (iv[1] << 16) | (iv[2] << 8) | iv[3]) >>> 0,
+      ((iv[4] << 24) | (iv[5] << 16) | (iv[6] << 8) | iv[7]) >>> 0,
+      ((iv[8] << 24) | (iv[9] << 16) | (iv[10] << 8) | iv[11]) >>> 0
+    ];
+  }
+
+  function ctrXor(w, iv3, data, out) { // 从计数器 2 开始
+    var s = new Uint32Array(4);
+    var ctr = 2;
+    for (var off = 0; off < data.length; off += 16, ctr = (ctr + 1) >>> 0) {
+      s[0] = iv3[0]; s[1] = iv3[1]; s[2] = iv3[2]; s[3] = ctr >>> 0;
+      encBlock(w, s);
+      var n = Math.min(16, data.length - off);
+      for (var j = 0; j < n; j++) {
+        out[off + j] = data[off + j] ^ ((s[j >> 2] >>> (24 - 8 * (j & 3))) & 255);
+      }
+    }
+  }
+
+  function mulx(v) { return (v & 1n) ? ((v >> 1n) ^ R128) : (v >> 1n); }
+
+  // 预计算 16 张字节乘法表（bi=0 为最高位字节）。GCM 约定：从 MSB 逐位相乘，
+  // 块最高字节权重为 H，其后每字节乘以 x^8。
+  function buildGhashTables(H) {
+    var tables = new Array(16);
+    var M = H;
+    for (var bi = 0; bi < 16; bi++) {
+      var C = new Array(8), c = M;
+      for (var j = 0; j < 8; j++) { C[j] = c; c = mulx(c); } // C[j] = mulx^j(M)
+      var Tb = new Array(256);
+      Tb[0] = 0n;
+      for (var b = 1; b < 256; b++) {
+        var lsb = b & -b, k = 0;
+        while (((lsb >> k) & 1) === 0) k++;
+        Tb[b] = Tb[b ^ lsb] ^ C[7 - k]; // 字节的位 k（LSB）对应 mulx^(8bi+7-k)
+      }
+      tables[bi] = Tb;
+      M = mulx(mulx(mulx(mulx(mulx(mulx(mulx(mulx(M))))))));
+    }
+    return tables;
+  }
+
+  function ghash(H, data) {
+    var tables = buildGhashTables(H);
+    var x = 0n;
+    for (var off = 0; off < data.length; off += 16) {
+      var blk = 0n;
+      for (var t = 0; t < 16; t++) {
+        blk = (blk << 8n) | BigInt(off + t < data.length ? data[off + t] : 0);
+      }
+      x = (x ^ blk) & MASK;
+      var z = 0n;
+      for (var bi = 0; bi < 16; bi++) {
+        z = z ^ tables[bi][Number((x >> BigInt(8 * (15 - bi))) & 0xffn)];
+      }
+      x = z;
+    }
+    return x;
+  }
+
+  function decryptAesGcmJs(keyBytes, iv, cipher, tag) {
+    var w = expandKey256(keyBytes);
+    var s = new Uint32Array(4);
+    encBlock(w, s);                       // H = E(0^16)
+    var H = ((BigInt(s[0]) << 96n) | (BigInt(s[1]) << 64n) | (BigInt(s[2]) << 32n) | BigInt(s[3])) & MASK;
+
+    // 认证输入：密文(补零到 16) ‖ 长度块
+    var padded = new Uint8Array(Math.ceil(cipher.length / 16) * 16 + 16);
+    padded.set(cipher, 0);
+    var bits = BigInt(cipher.length) * 8n;
+    var lo = padded.length - 16;
+    for (var q = 0; q < 8; q++) {
+      padded[lo + 8 + q] = Number((bits >> BigInt(56 - 8 * q)) & 0xffn);
+    }
+    var S = ghash(H, padded);
+
+    s[0] = s[1] = s[2] = 0;
+    var iw = ivWords(iv);
+    s[0] = iw[0]; s[1] = iw[1]; s[2] = iw[2]; s[3] = 1;
+    encBlock(w, s);                       // E(J0)
+    var E0 = ((BigInt(s[0]) << 96n) | (BigInt(s[1]) << 64n) | (BigInt(s[2]) << 32n) | BigInt(s[3])) & MASK;
+
+    var expected = (S ^ E0) & MASK;
+    var got = bytesToBigInt(tag);
+    if (expected !== got) throw new Error("GCM 标签校验失败（密钥不匹配或文件被篡改）");
+
+    var out = new Uint8Array(cipher.length);
+    ctrXor(w, iw, cipher, out);
+    return out;
+  }
+  /* ---------- 纯 JS AES-256-GCM 后备结束 ---------- */
+
+  async function decryptBuffer(buf, forceJs) {
+    var c = parseContainer(buf);
+    var sessionKey = rsaUnwrapSessionKey(c.wrappedKey, 32);
+    var hasSubtle = typeof globalThis.crypto !== "undefined" && !!globalThis.crypto.subtle;
+    if (!forceJs && hasSubtle) {
+      var aesKey = await globalThis.crypto.subtle.importKey("raw", sessionKey, "AES-GCM", false, ["decrypt"]);
+      var combined = new Uint8Array(c.cipher.length + c.tag.length);
+      combined.set(c.cipher, 0);
+      combined.set(c.tag, c.cipher.length);
+      var plain = await globalThis.crypto.subtle.decrypt({ name: "AES-GCM", iv: c.iv, tagLength: 128 }, aesKey, combined);
+      sessionKey.fill(0);
+      return new Uint8Array(plain);
+    }
+    var out = decryptAesGcmJs(sessionKey, c.iv, c.cipher, c.tag);
+    sessionKey.fill(0);
+    return out;
+  }
+
+  return { decryptBuffer: decryptBuffer, parseContainer: parseContainer, rsaUnwrapSessionKey: rsaUnwrapSessionKey };
+})();
+/*__QENC_CORE_END__*/
+
+const MIME = {
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif",
+  ".bmp": "image/bmp", ".webp": "image/webp", ".tif": "image/tiff", ".tiff": "image/tiff",
+  ".ico": "image/x-icon", ".heic": "image/heic",
+  ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg",
+  ".mov": "video/quicktime", ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
+  ".wmv": "video/x-ms-wmv", ".flv": "video/x-flv", ".mpg": "video/mpeg", ".mpeg": "video/mpeg",
+  ".3gp": "video/3gpp", ".ts": "video/mp2t"
+};
+
+const FORCE_JS = new URLSearchParams(location.search).has("js"); // ?js=1 可强制走纯 JS 解密调试
+const $ = (id) => document.getElementById(id);
+let currentBlobUrl = null;
+
+function setStatus(text, isError) {
+  const el = $("status");
+  el.textContent = text;
+  el.className = isError ? "error" : "";
+}
+
+function showViewer(el, hintText) {
+  const img = $("img"), video = $("video");
+  video.pause();
+  img.hidden = el !== img;
+  video.hidden = el !== video;
+  $("hint").style.display = el ? "none" : "";
+  if (!el && hintText) $("hint").textContent = hintText;
+}
+
+function renderList() {
+  const list = $("filelist");
+  list.innerHTML = "";
+  addGroup(list, "内置文件", FILES);
+  if (serverFiles.length > 0) addGroup(list, "服务器列表（" + serverFiles.length + "）", serverFiles);
+}
+
+function addGroup(list, title, items) {
+  if (items.length === 0) return;
+  const head = document.createElement("li");
+  head.className = "group";
+  head.textContent = title;
+  list.appendChild(head);
+  items.forEach((f) => {
+    const li = document.createElement("li");
+    li.textContent = f.name;
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = IMAGE_EXTS.includes(f.ext) ? "图片" : VIDEO_EXTS.includes(f.ext) ? "视频" : "其他";
+    li.appendChild(tag);
+    li.title = f.url;
+    li.addEventListener("click", () => {
+      list.querySelectorAll("li.active").forEach((x) => x.classList.remove("active"));
+      li.classList.add("active");
+      preview(f);
+    });
+    list.appendChild(li);
+  });
+}
+
+/* ---- 从接口加载加密文件列表 ----
+   接口返回 JSON，支持三种形式：
+   1. 字符串数组：["https://.../a.jpg.enc", "/media/b.mp4.enc"]
+   2. 对象数组：[{ url|path|href|file|name: "..." }, ...]
+   3. 包装对象：{ files|data|list|items|urls|result: [ ... ] }
+   相对地址按接口 URL 解析；条目自动识别并去除 .enc 后缀判定媒体类型。 */
+let serverFiles = [];
+
+async function loadServerList() {
+  const api = $("apiurl").value.trim();
+  if (!api) { setStatus("请先填入列表接口地址", true); return; }
+  setStatus("正在加载列表 " + api + " …");
+  try {
+    const resp = await fetch(api);
+    if (!resp.ok) throw new Error("接口返回 HTTP " + resp.status);
+    let body;
+    try { body = await resp.json(); }
+    catch (e) { throw new Error("接口返回的不是 JSON"); }
+    if (body && !Array.isArray(body)) {
+      for (const key of ["files", "data", "list", "items", "urls", "result"]) {
+        if (Array.isArray(body[key])) { body = body[key]; break; }
+      }
+    }
+    if (!Array.isArray(body)) throw new Error("接口需返回数组，或含 files/data/list 数组字段的对象");
+    serverFiles = body.map((e) => normalizeServerEntry(e, resp.url || api)).filter(Boolean);
+    renderList();
+    setStatus("列表加载成功：" + serverFiles.length + " 项（识别 " + body.length + " 条原始数据），与内置清单分组显示");
+  } catch (ex) {
+    setStatus("加载列表失败：" + ex.message + "。跨域访问需服务器返回 Access-Control-Allow-Origin 头；HTTPS 页面不能加载 HTTP 接口。", true);
+  }
+}
+
+function normalizeServerEntry(entry, baseUrl) {
+  let raw = null;
+  if (typeof entry === "string") raw = entry;
+  else if (entry && typeof entry === "object") {
+    for (const key of ["url", "path", "href", "file", "uri", "name"]) {
+      if (typeof entry[key] === "string") { raw = entry[key]; break; }
+    }
+  }
+  if (!raw) return null;
+  let u;
+  try { u = new URL(raw, baseUrl); } catch (e) { return null; }
+  const file = decodeURIComponent(u.pathname.split("/").pop() || u.href);
+  let name = file;
+  if (SUFFIX && file.toLowerCase().endsWith(SUFFIX)) name = file.slice(0, -SUFFIX.length);
+  const m = name.match(/\.[^.\\/]*$/);
+  return { url: u.href, name, ext: m ? m[0].toLowerCase() : "" };
+}
+
+async function preview(f) {
+  $("spinner").classList.add("on");
+  setStatus("正在解密 " + f.name + " …");
+  try {
+    const resp = await fetch(f.url);
+    if (!resp.ok) throw new Error("下载失败 HTTP " + resp.status);
+    const plain = await QENC.decryptBuffer(await resp.arrayBuffer(), FORCE_JS);
+
+    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = URL.createObjectURL(new Blob([plain], { type: MIME[f.ext] || "application/octet-stream" }));
+
+    const img = $("img"), video = $("video");
+    if (IMAGE_EXTS.includes(f.ext)) {
+      video.removeAttribute("src"); video.load();
+      img.src = currentBlobUrl;
+      showViewer(img);
+      setStatus("已解密显示：" + f.name + "（" + plain.length.toLocaleString() + " 字节）");
+    } else if (VIDEO_EXTS.includes(f.ext)) {
+      img.removeAttribute("src");
+      video.src = currentBlobUrl;
+      showViewer(video);
+      video.play().catch(() => {});
+      setStatus("已解密，开始播放：" + f.name + "（" + plain.length.toLocaleString() + " 字节）");
+    } else {
+      showViewer(null, "该类型（" + f.ext + "）暂不支持预览");
+      setStatus("该类型暂不支持预览：" + f.ext, true);
+    }
+  } catch (ex) {
+    showViewer(null, "预览失败，见下方提示");
+    setStatus("解密失败：" + ex.message, true);
+    console.error(ex);
+  } finally {
+    $("spinner").classList.remove("on");
+  }
+}
+
+$("video").addEventListener("error", () => {
+  if (!$("video").hidden) setStatus("当前浏览器无法播放该视频编码（文件已正确解密）", true);
+});
+
+(function init() {
+  const subtleOk = typeof globalThis.crypto !== "undefined" && !!globalThis.crypto.subtle;
+  $("engine").textContent = FORCE_JS ? "解密引擎：纯 JS（手动强制）"
+    : subtleOk ? "解密引擎：WebCrypto"
+    : "解密引擎：纯 JS 后备（当前非 HTTPS/localhost 环境）";
+  $("btnload").addEventListener("click", loadServerList);
+  $("btnclear").addEventListener("click", () => {
+    serverFiles = [];
+    renderList();
+    setStatus("已清空服务器列表");
+  });
+  $("apiurl").addEventListener("keydown", (e) => { if (e.key === "Enter") loadServerList(); });
+  renderList();
+  setStatus("内置 " + FILES.length + " 个加密文件；可在上方输入接口地址加载服务器文件列表");
+})();
+</script>
+</body>
+</html>
